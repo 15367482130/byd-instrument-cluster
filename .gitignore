@@ -1,0 +1,46 @@
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# ---------- 打包中间产物 ----------
+dist/
+build/
+*.spec
+_selftest*.txt
+_httptest*.txt
+_pt/
+platform-tools.zip
+
+# 打包后临时生成的调试输出
+pc-exe/_*.txt
+
+# ---------- 发布产物（不入库，统一放 GitHub Releases） ----------
+# 仓库只保留源码，git clone 才不会被 20 MB 二进制拖慢
+pc-exe/*.exe
+pc-exe/vendor/
+android/*.apk
+
+# ---------- Android 构建中间产物 ----------
+android/build/
+android/dist/
+android/app/build/
+android/*.apk.idsig
+android/gen/
+android/.gradle/
+
+# ---------- 第三方工具（由脚本自动获取） ----------
+tools/
+platform-tools/
+
+# ---------- 编辑器 / 系统 ----------
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini

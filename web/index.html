@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BYD 仪表飞屏助手</title>
+<style>
+  :root{
+    --bg:#f4f6fa; --card:#ffffff; --line:#e3e8f0; --ink:#1a2233; --sub:#63708a;
+    --blue:#1f6feb; --blue-d:#155ac0; --green:#1a9e5f; --red:#d93b3b; --amber:#b7791f;
+    --code:#0f172a; --code-ink:#c8d6ee;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:14px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",Roboto,sans-serif;}
+  .wrap{max-width:960px;margin:0 auto;padding:22px 18px 60px}
+  header h1{margin:0 0 4px;font-size:21px;letter-spacing:.3px}
+  header p{margin:0;color:var(--sub);font-size:13px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:16px 18px;margin-top:16px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+  .card h2{margin:0 0 12px;font-size:15px;display:flex;align-items:center;gap:8px}
+  .card h2 .dot{width:8px;height:8px;border-radius:50%;background:var(--blue)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  label{font-size:13px;color:var(--sub)}
+  input[type=text],input[type=number]{background:#fff;border:1px solid var(--line);
+    border-radius:8px;padding:8px 10px;font-size:13px;color:var(--ink);outline:none}
+  input[type=text]:focus,input[type=number]:focus{border-color:var(--blue);
+    box-shadow:0 0 0 3px rgba(31,111,235,.12)}
+  button{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:9px;
+    padding:9px 14px;font-size:13.5px;cursor:pointer;transition:.15s}
+  button:hover{border-color:#c4cfe2;background:#f7f9fd}
+  button:active{transform:translateY(1px)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+  .primary:hover{background:var(--blue-d);border-color:var(--blue-d)}
+  .danger{background:#fff;border-color:#f1c9c9;color:var(--red)}
+  .danger:hover{background:#fff5f5;border-color:#e6a6a6}
+  .ok{background:#fff;border-color:#bde6cf;color:var(--green)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+  .big{padding:15px 12px;font-size:15px;font-weight:600;text-align:center}
+  .status{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--sub)}
+  .led{width:9px;height:9px;border-radius:50%;background:#c3cbd9}
+  .led.on{background:var(--green);box-shadow:0 0 0 3px rgba(26,158,95,.15)}
+  .led.bad{background:var(--red);box-shadow:0 0 0 3px rgba(217,59,59,.15)}
+  pre{margin:0;background:var(--code);color:var(--code-ink);border-radius:10px;
+    padding:13px;font:12.5px/1.65 "SFMono-Regular",Consolas,"Courier New",monospace;
+    white-space:pre-wrap;word-break:break-all;max-height:380px;overflow:auto}
+  .hint{color:var(--sub);font-size:12.5px;margin-top:8px}
+  .chips button{padding:6px 10px;font-size:12.5px;border-radius:20px}
+  #shot{max-width:100%;border:1px solid var(--line);border-radius:10px;margin-top:10px;display:none}
+  .warn{background:#fffaf0;border:1px solid #f0e0c0;color:#8a6116;border-radius:10px;
+    padding:11px 13px;font-size:12.8px;margin-top:16px}
+  .sep{height:1px;background:var(--line);margin:12px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>BYD 仪表飞屏助手</h1>
+    <p>通过车机自带的 ClusterDebug 调试工具，打开 DiLink 4.0「18.x 控制器」隐藏的仪表全屏导航</p>
+  </header>
+
+  <!-- 连接 -->
+  <div class="card">
+    <h2><span class="dot"></span>连接车机（无线 ADB）</h2>
+    <div class="row">
+      <label>IP</label><input type="text" id="host" value="192.168.10.10" style="width:150px">
+      <label>端口</label><input type="number" id="port" value="5555" style="width:90px">
+      <button class="primary" onclick="doConnect()">连接</button>
+      <button onclick="doAction('download_adb','下载 adb')">下载 adb</button>
+      <span class="status"><span class="led" id="led"></span><span id="connText">未连接</span></span>
+    </div>
+    <div class="hint">前置条件：车机「开发者选项」里打开 <b>连接USB后启用调试模式</b> 与 <b>无线ADB调试</b>；
+      电脑连上车机热点（或同一局域网）。首次连接车机会弹授权，勾选「始终允许」。</div>
+    <div class="sep"></div>
+    <div class="row">
+      <button onclick="doTcpip()">开启 TCP 明文 5555（需先用 USB 线连设备）</button>
+    </div>
+    <div class="hint">
+      <b>连不上、报 connection refused / 超时？</b>多半是设备处于 Android 11+ 的
+      <b>「无线调试」</b>模式 —— 它用 <b>TLS 加密 + 37000~45000 的随机端口</b>，
+      <b>不监听 5555</b>，普通程序连不上。<br>
+      解法：用 USB 线把设备连到这台电脑、在设备上允许 USB 调试，然后点上面这个按钮，
+      adbd 就会改回 5555 明文监听（重启设备后失效，需重做）。<br>
+      <b>比亚迪车机</b>不用走这一步 —— 它的「无线 adb 调试」开关本身就是 5555 明文。
+    </div>
+  </div>
+
+  <!-- 主操作 -->
+  <div class="card">
+    <h2><span class="dot"></span>飞屏开关</h2>
+    <div class="grid">
+      <button class="big primary" onclick="doAction('on','开启飞屏')">开启仪表飞屏</button>
+      <button class="big danger" onclick="doAction('off','关闭飞屏')">关闭仪表飞屏</button>
+      <button class="big" onclick="doAction('small','切换小屏')">切换到小屏导航</button>
+      <button class="big" onclick="doAction('detect','开始自检')">环境自检</button>
+      <button class="big" onclick="doAction('shot','仪表截图')">仪表截图</button>
+    </div>
+    <div class="hint">「开启飞屏」= 启动 ClusterDebug 代理 → 仪表导航类型设为全屏(4) → 触发投影(35→16) → 启动定制版地图。</div>
+    <img id="shot" alt="仪表截图">
+  </div>
+
+  <!-- 命令调试台 -->
+  <div class="card">
+    <h2><span class="dot"></span>命令调试台（进阶）</h2>
+    <div class="row">
+      <input type="text" id="rawCmd" placeholder='例如 service call AutoContainer 2 i32 1000 s16 "16"'
+             style="flex:1;min-width:260px" onkeydown="if(event.key==='Enter')doRaw()">
+      <button onclick="doRaw()">执行 adb shell</button>
+    </div>
+    <div class="row chips" style="margin-top:9px">
+      <button onclick="fill('service call autoservice 5 i32 1007 i32 1086337074')">读导航类型</button>
+      <button onclick="fill('service call AutoContainer 2 i32 1000 s16 &quot;16&quot;')">全屏投影 16</button>
+      <button onclick="fill('service call AutoContainer 2 i32 1000 s16 &quot;17&quot;')">半屏投影 17</button>
+      <button onclick="fill('service call AutoContainer 2 i32 1000 s16 &quot;18&quot;')">关投影 18</button>
+      <button onclick="fill('service call AutoContainer 2 i32 1000 s16 &quot;35&quot;')">Di4.0 模式 35</button>
+      <button onclick="fill('pm list packages | grep -iE &quot;autonavi|amap|baidu&quot;')">查地图包</button>
+      <button onclick="fill('getprop | grep -iE &quot;ivi|byd&quot;')">查固件属性</button>
+      <button onclick="fill('fission_screencap -d 1 -p /data/local/tmp/cluster.png')">仪表截图命令</button>
+    </div>
+    <div class="hint">不同固件的模式号/参数可能不同，这里可以手动试。回复里出现 Parcel(......N) 时，末尾 N 就是返回值。</div>
+  </div>
+
+  <!-- 日志 -->
+  <div class="card">
+    <h2><span class="dot"></span>运行日志</h2>
+    <pre id="log">就绪。请先连接车机，再点击「环境自检」。</pre>
+  </div>
+
+  <div class="warn">
+    ⚠️ <b>安全提示</b>：本工具仅适用于 <b>18.x / 21.x 控制器</b>（DiLink 4.0）的全液晶仪表车型，
+    低配机械仪表不支持，切勿在其它控制器上强行开启。请在<b>车辆停稳、P 挡</b>时操作，
+    <b>行驶中不要使用</b>。此类改动可能<b>影响车机质保</b>，操作风险由使用者自负。
+  </div>
+</div>
+
+<script>
+const TOKEN = "__TOKEN__";
+const logEl = document.getElementById('log');
+let busy = false;
+
+function log(msg){
+  logEl.textContent += "\n\n" + msg;
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function setLog(msg){ logEl.textContent = msg; logEl.scrollTop = 0; }
+function led(cls, text){
+  document.getElementById('led').className = 'led ' + cls;
+  document.getElementById('connText').textContent = text;
+}
+function setBusy(b){
+  busy = b;
+  document.querySelectorAll('button').forEach(x => x.disabled = b);
+}
+
+async function call(name, params){
+  const r = await fetch('/api/action', {
+    method:'POST',
+    headers:{'Content-Type':'application/json','X-Token':TOKEN},
+    body: JSON.stringify({name, params: params||{}})
+  });
+  return await r.json();
+}
+
+async function doConnect(){
+  if(busy) return; setBusy(true);
+  const host = document.getElementById('host').value.trim();
+  const port = parseInt(document.getElementById('port').value || '5555', 10);
+  setLog(`正在连接 ${host}:${port} …`);
+  try{
+    const res = await call('connect', {host, port});
+    setLog(res.log || '');
+    if(res.ok){ led('on', '已连接 ' + host); }
+    else { led('bad', '连接失败'); }
+  }catch(e){ setLog('请求失败：' + e); led('bad','错误'); }
+  setBusy(false);
+}
+
+async function doAction(name, title){
+  if(busy) return; setBusy(true);
+  setLog(`▶ ${title} …`);
+  try{
+    const res = await call(name, {});
+    let out = res.log || '';
+    if(res.image){
+      const img = document.getElementById('shot');
+      img.src = res.image; img.style.display = 'block';
+      out += "\n\n[已获取仪表截图]";
+    }
+    setLog(`▶ ${title}\n\n` + out);
+  }catch(e){ setLog('请求失败：' + e); }
+  setBusy(false);
+}
+
+function fill(cmd){ document.getElementById('rawCmd').value = cmd; }
+
+async function doTcpip(){
+  if(busy) return; setBusy(true);
+  const port = parseInt(document.getElementById('port').value || '5555', 10);
+  setLog(`▶ 把 adbd 切到 TCP 明文端口 ${port} …\n（需要设备已用 USB 线连到本机并允许 USB 调试）`);
+  try{
+    const res = await call('tcpip', {port});
+    setLog(`▶ 开启 TCP 明文 ${port}\n\n` + (res.log || ''));
+    if(res.ok){ led('', '已切到 TCP ' + port + '，现在可以点「连接」'); }
+  }catch(e){ setLog('请求失败：' + e); }
+  setBusy(false);
+}
+
+async function doRaw(){
+  if(busy) return; setBusy(true);
+  const cmd = document.getElementById('rawCmd').value.trim();
+  if(!cmd){ setBusy(false); return; }
+  setLog('▶ 执行自定义命令 …');
+  try{
+    const res = await call('raw', {cmd});
+    setLog(`▶ adb shell ${cmd}\n\n` + (res.log || ''));
+  }catch(e){ setLog('请求失败：' + e); }
+  setBusy(false);
+}
+
+// 静默探活，标记服务在线
+fetch('/api/ping').then(()=>led('', '服务已就绪，待连接')).catch(()=>{});
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+# 统一换行符，避免 Windows/macOS 协作时整文件 diff
+* text=auto eol=lf
+
+# 二进制文件不做换行转换
+*.exe   binary
+*.dll   binary
+*.apk   binary
+*.keystore binary
+*.png   binary
+*.jpg   binary
+*.ico   binary
+
+# 批处理必须是 CRLF，否则 Windows 下可能执行异常
+*.bat   text eol=crlf
