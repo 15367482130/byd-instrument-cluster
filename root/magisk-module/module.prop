@@ -1,0 +1,6 @@
+id=byd-feipin
+name=BYD 仪表飞屏 · 开机自动开启
+version=v1.1.0
+versionCode=110
+author=eryd
+description=开机自动把 DiLink 4.0（18.x / 21.x 控制器）隐藏的「仪表全屏导航」打开。不依赖 ADB、不依赖「无线调试」开关，重启也不会失效。

@@ -41,6 +41,7 @@ public class MainActivity extends Activity {
     private TextView logView;
     private ScrollView logScroll;
     private Button autoBtn;
+    private Button modeBtn;
     private EditText portInput;
 
     @Override
@@ -48,8 +49,11 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         buildUi();
         if (logView.getText().length() == 0) {
-            appendLog("就绪。\n前置条件：车机「开发者选项」里已打开「连接USB后启用调试模式」和「无线ADB调试」。\n"
-                    + "首次点「连接 / 授权」时，车机会弹出「允许 USB 调试」，请勾选始终允许。");
+            appendLog("就绪。\n"
+                    + "· 车机已 root：直接点「连接 / 授权」即可，走 root 通道，不需要开无线调试。\n"
+                    + "· 车机没 root：先在「开发者选项」里打开「连接USB后启用调试模式」和「无线ADB调试」，\n"
+                    + "  再点「连接 / 授权」，首次会在车机上弹「允许 USB 调试」，勾选始终允许。\n"
+                    + "不确定有没有 root 就先点「检测 root」。");
         }
     }
 
@@ -117,6 +121,7 @@ public class MainActivity extends Activity {
             portInput.setText(keepPort);
         }
         refreshAutoLabel();
+        refreshModeLabel();
         scrollLogToEnd();
     }
 
@@ -143,7 +148,7 @@ public class MainActivity extends Activity {
         status = new TextView(this);
         status.setTextSize(13);
         status.setTextColor(Color.parseColor("#63708A"));
-        status.setText("● 未连接本地 ADB");
+        status.setText("● 未连接");
         status.setPadding(0, 0, 0, dp(8));
         panel.addView(status);
 
@@ -184,6 +189,18 @@ public class MainActivity extends Activity {
                 button("环境自检", v -> doDiagnose())));
 
         panel.addView(row(
+                modeBtn = button("", v -> toggleMode()),
+                button("检测 root", v -> doProbeRoot())));
+
+        TextView modeHint = new TextView(this);
+        modeHint.setText("已 root 的车机优先用 root 通道 —— 不需要开无线调试、不需要端口、"
+                + "重启也不会失效。root 调不通时切成「仅 ADB」即可。");
+        modeHint.setTextSize(11);
+        modeHint.setTextColor(Color.parseColor("#8A94A6"));
+        modeHint.setPadding(0, 0, 0, dp(8));
+        panel.addView(modeHint);
+
+        panel.addView(row(
                 buttonPrimary("开启仪表飞屏", v -> doEnable()),
                 buttonDanger("关闭飞屏", v -> doDisable())));
 
@@ -219,26 +236,34 @@ public class MainActivity extends Activity {
 
     private void doConnect() {
         final int port = currentPort();
+        final boolean preferRoot = Prefs.isPreferRoot(this);
         new Thread(() -> {
-            ui.post(() -> setStatus("正在连接 127.0.0.1:" + port + " …", null));
+            ui.post(() -> setStatus(preferRoot ? "正在检测 root / 连接 …" : "正在连接 127.0.0.1:" + port + " …", null));
             try {
-                AdbClient c = connectWithFallback(port);
+                Shell c = connectWithFallback(port);
                 String ver = c.shell("getprop ro.build.display.id").trim();
+                final String mode = c.mode();
                 ui.post(() -> {
-                    setStatus("● 已连接（" + (ver.isEmpty() ? "未知固件" : ver) + "）", "#1A9E5F");
-                    appendLog("已连接本地 adbd（端口 " + Prefs.getPort(this) + "）。");
+                    setStatus("● 已连接 · " + mode + " 通道"
+                            + (ver.isEmpty() ? "" : "（" + ver + "）"), "#1A9E5F");
+                    appendLog("已连接。通道 = " + mode
+                            + ("root".equals(mode)
+                            ? "（su，不需要 ADB）"
+                            : "（本机 adbd，端口 " + Prefs.getPort(this) + "）"));
+                    refreshModeLabel();
                 });
             } catch (Exception e) {
                 ui.post(() -> {
                     setStatus("● 连接失败", "#D93B3B");
                     appendLog("连接失败：" + e.getMessage() + "\n\n" + EnvProbe.diagnose(this, port));
+                    refreshModeLabel();
                 });
             }
         }).start();
     }
 
-    /** 先按界面上的端口连；失败时若探测到 adbd 实际监听的明文端口不同，自动再试一次。 */
-    private AdbClient connectWithFallback(int port) throws Exception {
+    /** 先按配置尝试（root 优先）；走 ADB 失败时，若探测到 adbd 实际监听的明文端口不同，再试一次。 */
+    private Shell connectWithFallback(int port) throws Exception {
         try {
             return AdbManager.get(this, port, 90000);
         } catch (Exception first) {
@@ -246,15 +271,49 @@ public class MainActivity extends Activity {
             if (alt > 0 && alt != port) {
                 AdbManager.reset();
                 try {
-                    AdbClient c = AdbManager.get(this, alt, 30000);
+                    Shell c = AdbManager.get(this, alt, 30000);
                     Prefs.setPort(this, alt);
                     return c;
                 } catch (Exception ignored) {
-                    // 还是不行，抛出最初那个错误，报错信息更贴近用户的输入
+                    // 还是不行，抛出最初那个错误，报错信息更贴近用户输入
                 }
             }
             throw first;
         }
+    }
+
+    /** 在「root 优先」与「仅 ADB」之间切换。 */
+    private void toggleMode() {
+        boolean v = !Prefs.isPreferRoot(this);
+        Prefs.setPreferRoot(this, v);
+        RootShell.resetProbe();
+        AdbManager.reset();
+        refreshModeLabel();
+        Toast.makeText(this, v ? "已改为「root 优先」" : "已改为「仅 ADB」", Toast.LENGTH_SHORT).show();
+    }
+
+    /** 主动探测 root（会触发 Magisk / KernelSU 的授权弹窗）。 */
+    private void doProbeRoot() {
+        new Thread(() -> {
+            ui.post(() -> setStatus("正在检测 root …（可能会弹出授权框）", null));
+            boolean ok = RootShell.available(this);
+            String detail = RootShell.probeDetail();
+            ui.post(() -> {
+                appendLog("▶ 检测 root\n" + detail
+                        + (ok ? "\n→ 可以直接用 root 通道，不需要 ADB。" : "\n→ 将退回 ADB 通道。"));
+                setStatus(ok ? "● root 可用" : "● 没有 root，用 ADB", ok ? "#1A9E5F" : "#D93B3B");
+                refreshModeLabel();
+            });
+        }).start();
+    }
+
+    private void refreshModeLabel() {
+        if (modeBtn == null) {
+            return;
+        }
+        String pref = Prefs.isPreferRoot(this) ? "root 优先" : "仅 ADB";
+        String cur = AdbManager.mode();
+        modeBtn.setText("连接方式：" + pref + ("-".equals(cur) ? "" : "（当前 " + cur + "）"));
     }
 
     /** 取界面上的端口；非法或为空则回退到已保存值。 */
@@ -304,7 +363,7 @@ public class MainActivity extends Activity {
     }
 
     private interface Job {
-        String run(AdbClient c) throws Exception;
+        String run(Shell c) throws Exception;
     }
 
     private void run(String what, Job job) {
@@ -312,18 +371,21 @@ public class MainActivity extends Activity {
         new Thread(() -> {
             ui.post(() -> setStatus("正在执行：" + what + " …", null));
             try {
-                AdbClient c = connectWithFallback(port);
+                Shell c = connectWithFallback(port);
                 String out = job.run(c);
+                final String mode = c.mode();
                 ui.post(() -> {
-                    appendLog("▶ " + what + "\n" + out);
+                    appendLog("▶ " + what + "（" + mode + " 通道）\n" + out);
                     setStatus("● " + what + " 完成", "#1A9E5F");
                     Toast.makeText(this, what + " 完成", Toast.LENGTH_SHORT).show();
+                    refreshModeLabel();
                 });
             } catch (Exception e) {
                 ui.post(() -> {
                     appendLog("▶ " + what + " 失败：" + e.getMessage()
                             + "\n\n" + EnvProbe.diagnose(this, port));
                     setStatus("● " + what + " 失败", "#D93B3B");
+                    refreshModeLabel();
                 });
             }
         }).start();

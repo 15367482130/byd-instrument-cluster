@@ -97,7 +97,24 @@ public final class EnvProbe {
         boolean wifi = wirelessDebugEnabled(c);
 
         StringBuilder sb = new StringBuilder();
-        sb.append("=== 本机 ADB 环境探测 ===\n");
+        sb.append("=== 本机环境探测 ===\n");
+
+        // ---- root 通道优先判断：有 root 就不需要 ADB 这一套 ----
+        boolean preferRoot = Prefs.isPreferRoot(c);
+        boolean rootOk = Prefs.isRootOk(c);
+        String rootDetail = RootShell.probeDetail();
+        if (preferRoot && !rootOk) {
+            rootOk = RootShell.available(c);
+            rootDetail = RootShell.probeDetail();
+        }
+        sb.append("root 可用             : ").append(tri(rootOk)).append('\n');
+        if (rootDetail != null && rootDetail.length() > 0) {
+            sb.append("  ").append(rootDetail).append('\n');
+        }
+        sb.append("连接方式偏好          : ").append(preferRoot ? "root 优先" : "仅 ADB")
+                .append(preferRoot ? "" : "（可在界面上切换回 root 优先）").append("\n\n");
+
+        sb.append("--- ADB 环境 ---\n");
         sb.append("Android 版本          : ").append(Build.VERSION.RELEASE)
                 .append("  (API ").append(sdk).append(")\n");
         sb.append("USB 调试开关          : ").append(tri(usb)).append('\n');
@@ -109,7 +126,12 @@ public final class EnvProbe {
         sb.append("本次尝试端口          : ").append(triedPort).append("\n\n");
 
         // ---- 结论 ----
-        if (tls > 0 && tcp <= 0) {
+        if (rootOk) {
+            sb.append("【结论】已检测到 root。直接用 root 通道即可 ——\n");
+            sb.append("        autoservice / AutoContainer 只检查调用者身份，uid 0 比 shell 还高，\n");
+            sb.append("        所以不需要「无线调试」开关、不需要 5555 端口、不用授权弹窗，重启也不会失效。\n");
+            sb.append("【若仍失败】确认固件确实是 18.x / 21.x 控制器；可点「检测 root」看 su 的详细输出。\n");
+        } else if (tls > 0 && tcp <= 0) {
             sb.append("【结论】当前处于 Android 11+ 的「无线调试」模式。\n");
             sb.append("        它不监听 5555，而是随机端口 + TLS 加密 + 需要配对，\n");
             sb.append("        普通程序无法用第 5555 端口那一套协议连上去。\n");

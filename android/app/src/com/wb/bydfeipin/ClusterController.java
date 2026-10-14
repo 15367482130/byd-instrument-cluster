@@ -25,10 +25,10 @@ public class ClusterController {
     /** 0x4C10A018 写 INSTRUMENT_NAVI_TYPE_SET */
     public static final long FEATURE_SET = 1276157976L;
 
-    private final AdbClient adb;
+    private final Shell adb;
     private final StringBuilder log = new StringBuilder();
 
-    public ClusterController(AdbClient adb) {
+    public ClusterController(Shell adb) {
         this.adb = adb;
     }
 
@@ -51,7 +51,7 @@ public class ClusterController {
             }
             log.append('\n');
             return out;
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.append("[!!] ").append(title).append(" 失败：").append(e.getMessage()).append('\n');
             log.append("     $ ").append(cmd).append("\n\n");
             return "";

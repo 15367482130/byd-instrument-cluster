@@ -19,7 +19,7 @@ import java.security.PrivateKey;
  * <p>实现内容：CNXN 握手 → RSA AUTH（token 签名，失败则上报公钥等待授权）
  * → OPEN "shell:cmd" → 收 WRTE 数据 → CLSE 结束。
  */
-public class AdbClient {
+public class AdbClient implements Shell {
 
     // ---- 协议常量 ----
     private static final int A_CNXN = 0x4e584e43;
@@ -158,6 +158,11 @@ public class AdbClient {
         socket = null;
         in = null;
         out = null;
+    }
+
+    @Override
+    public String mode() {
+        return "ADB";
     }
 
     // ---- 收发 ----

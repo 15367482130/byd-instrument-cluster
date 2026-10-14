@@ -10,7 +10,7 @@
 > 仅适用于 **18.x / 21.x 控制器**（DiLink 4.0）全液晶仪表车型。停稳 P 挡再操作，行驶中勿用。
 
 **不想自己构建** → 直接到 [Releases](https://github.com/15367482130/byd-instrument-cluster/releases/latest)
-下载 `BYD-Cluster-Feipin-v1.0.0.apk` 安装即可（下面第三节也是这个流程）。
+下载 `BYD-Cluster-Feipin-v1.1.0.apk` 安装即可（下面第三节也是这个流程）。
 
 ---
 
@@ -68,7 +68,7 @@ python build_apk.py --env D:\sdk     # 自定义工具目录，默认 ~/.wb-andr
 
 ```bash
 adb connect 192.168.10.10:5555
-adb install -r BYD-Cluster-Feipin-v1.0.0.apk
+adb install -r BYD-Cluster-Feipin-v1.1.0.apk
 ```
 
 或把 APK 放进车机的「Third Party Apps」U 盘目录（带国家代码后缀）侧载。
@@ -76,6 +76,34 @@ adb install -r BYD-Cluster-Feipin-v1.0.0.apk
 ---
 
 ## 三、使用
+
+App 有**两条通道，命令序列完全一样**，默认 **root 优先**：
+
+| | root 通道 | ADB 通道 |
+|---|---|---|
+| 用在哪 | 车机已 root（Magisk / KernelSU） | 车机没 root |
+| 前置条件 | **无** | 开发者选项里打开 **连接USB后启用调试模式** + **无线ADB调试** |
+| 端口 / 授权弹窗 | 不需要 | `5555` + 首次弹「允许 USB 调试」 |
+| 重启后 | 自动可用 | 要重新确认无线调试是开的 |
+| 实现 | `RootShell.java` —— `su -c` 直接执行 | `AdbClient.java` —— 自己实现 ADB 协议 |
+
+### 已 root 的车机（推荐）
+
+1. 打开本 App，点「**连接 / 授权**」—— 会自动探测 root 并走 root 通道，
+   第一次会弹一次 Magisk 的授权框，允许即可。
+2. 点「**开启仪表飞屏**」。之后到车机上开始导航，方向盘右侧菜单选「全屏导航」。
+3. 点「**开机自动开启**」切成「开」—— 有 root 时开机就能生效，**不依赖无线调试开关**。
+
+界面上的按钮：
+
+| 按钮 | 作用 |
+|---|---|
+| 连接 / 授权 | 优先 root；没 root 时退回 ADB |
+| 环境自检 | 打印 root 状态、su 路径、固件、ClusterDebug 是否存在、当前导航类型 |
+| **连接方式** | 在「root 优先」/「仅 ADB」之间切换（某台固件 root 调不通时用） |
+| **检测 root** | 主动探测 su，会打印 su 路径与 `id -u` 的实际输出 |
+
+### 没 root 的车机
 
 1. 车机「开发者选项」中打开 **连接USB后启用调试模式** 和 **无线ADB调试**。
 2. 打开本 App，点「**连接 / 授权**」。
@@ -85,6 +113,9 @@ adb install -r BYD-Cluster-Feipin-v1.0.0.apk
 
 「环境自检」会打印固件版本、控制器属性、ClusterDebug 是否存在、当前仪表导航类型
 （1 关闭 / 2 随导航 / 3 小屏 / 4 全屏）。
+
+> **为什么不干脆只用 root？** 因为要照顾没 root 的车机。App 做成自动选择：
+> 有 root 就用最省事的那条路，没有就退回 ADB，命令和结果完全一致。
 
 ---
 
@@ -113,17 +144,37 @@ adb install -r BYD-Cluster-Feipin-v1.0.0.apk
 
 ## 四、代码结构
 
+v1.1.0 起把「执行命令」这件事抽成了一层接口，root 与 ADB 只是它的两个实现：
+
+```
+ClusterController（命令序列，一个字没改）
+        │  只依赖
+        ▼
+      Shell  ← 接口：shell(cmd) / isConnected() / close() / mode()
+      ╱     ╲
+RootShell    AdbClient
+(su -c)      (自实现 ADB 协议)
+        ╲     ╱
+       AdbManager   ← 优先 root，失败退回 ADB，并缓存连接
+```
+
 | 文件 | 作用 |
 |---|---|
-| `AdbClient.java` | 最小 ADB 协议客户端（握手 / RSA 授权 / shell 执行） |
+| `Shell.java` | **新增**：执行命令的统一接口（root / ADB 两个实现） |
+| `RootShell.java` | **新增**：`su -c` 执行命令。探测 su 路径、缓存探测结果、带超时的一次性执行 |
+| `AdbClient.java` | 最小 ADB 协议客户端（握手 / RSA 授权 / shell 执行），实现 `Shell` |
 | `RsaKeyUtil.java` | RSA 密钥生成、Android 524 字节公钥编码、token 签名 |
-| `AdbManager.java` | 连接缓存与重连 |
+| `AdbManager.java` | 通道选择与连接缓存：**优先 root，其次 ADB** |
 | `ClusterController.java` | 飞屏命令序列（与 PC 版一致） |
 | `MainActivity.java` | 主界面（纯代码构建 UI，横竖屏自适应：横屏左右分栏） |
-| `EnvProbe.java` | 本机 ADB 环境探测：区分「明文 5555」与「Android 11+ 无线调试 TLS」，生成排错报告 |
-| `FeipinService.java` | 前台服务：开机后自动连接 + 每 5 分钟巡检 |
+| `EnvProbe.java` | 本机环境探测：先判断 root，再区分「明文 5555」与「Android 11+ 无线调试 TLS」 |
+| `FeipinService.java` | 前台服务：开机后自动连接 + 每 5 分钟巡检（有 root 时走 root） |
 | `BootReceiver.java` | 开机广播 → 拉起守护服务 |
-| `Prefs.java` | 配置与密钥存储 |
+| `Prefs.java` | 配置与密钥存储（含 `prefer_root` / `root_ok`） |
+
+> `RootShell` 走的是「一条命令起一个 `su` 进程」而不是常驻 shell。
+> 原因是 Magisk 的 `su` 在管道环境下可能分配 PTY 并把命令回显出来，
+> 常驻方案得靠标记行解析输出、容易串行；一次性执行最稳。
 
 ---
 
@@ -131,6 +182,7 @@ adb install -r BYD-Cluster-Feipin-v1.0.0.apk
 
 | 现象 | 原因 / 处理 |
 |---|---|
+| 有 root 但连接失败 | 点「**检测 root**」看 `su` 的实际输出；若 su 可用但仍调不通 BYD 服务，点「**连接方式**」切成「仅 ADB」 |
 | `ECONNREFUSED` / `Connection refused` | 5555 没有服务监听。**最常见原因**：设备处于 **Android 11+「无线调试」模式** —— 该模式用 TLS 加密 + 37000~45000 的随机端口，**不监听 5555**。解法：电脑 USB 连设备后运行 **`BYD-Wireless-ADB-Activator.exe`**（[Releases](https://github.com/15367482130/byd-instrument-cluster/releases/latest) 下载，单文件免安装）点「一键激活无线 ADB」；PC 版 Python 工具也有「开启 TCP 明文 5555」按钮。<br>**比亚迪车机不走这一步** —— 它的「无线 adb 调试」开关本身就是 5555 明文。 |
 | 连接失败「等待授权超时」 | 车机没弹授权框，或没点允许；确认无线 ADB 已开 |
 | 连接失败「adbd 拒绝了连接」 | 无线调试开关没打开，或端口不是 5555 |

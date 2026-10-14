@@ -18,6 +18,8 @@ public final class Prefs {
     private static final String K_PORT = "adb_port";
     private static final String K_MAP = "map_package";
     private static final String K_LOG = "last_log";
+    private static final String K_PREFER_ROOT = "prefer_root";
+    private static final String K_ROOT_OK = "root_ok";
 
     private Prefs() {}
 
@@ -79,5 +81,28 @@ public final class Prefs {
 
     public static void setLastLog(Context c, String v) {
         sp(c).edit().putString(K_LOG, v).apply();
+    }
+
+    // ------------------------------------------------------------ root 通道
+
+    /**
+     * 是否优先走 root 通道（默认 true）。
+     * 关掉后即使有 root 也只用 ADB —— 万一某台固件用 root 身份调不通 BYD 的服务，可以切回来。
+     */
+    public static boolean isPreferRoot(Context c) {
+        return sp(c).getBoolean(K_PREFER_ROOT, true);
+    }
+
+    public static void setPreferRoot(Context c, boolean v) {
+        sp(c).edit().putBoolean(K_PREFER_ROOT, v).apply();
+    }
+
+    /** 上次探测 root 的结果，仅用于界面展示。 */
+    public static boolean isRootOk(Context c) {
+        return sp(c).getBoolean(K_ROOT_OK, false);
+    }
+
+    public static void setRootOk(Context c, boolean v) {
+        sp(c).edit().putBoolean(K_ROOT_OK, v).apply();
     }
 }

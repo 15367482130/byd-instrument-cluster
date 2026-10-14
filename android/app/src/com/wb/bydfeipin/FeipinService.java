@@ -60,7 +60,7 @@ public class FeipinService extends Service {
                 continue;
             }
             try {
-                AdbClient c = AdbManager.get(this, 90000);
+                Shell c = AdbManager.get(this, 90000);
                 ClusterController cc = new ClusterController(c);
                 int type = cc.readNaviType();
                 if (type != 4) {

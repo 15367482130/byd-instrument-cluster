@@ -25,6 +25,10 @@ pc-exe/*.exe
 pc-exe/vendor/
 android/*.apk
 
+# Magisk 模块目录里的主脚本是 build_module.py 复制进去的，只保留 root/byd-feipin.sh 这一份源
+root/magisk-module/byd-feipin.sh
+root/__pycache__/
+
 # ---------- Android 构建中间产物 ----------
 android/build/
 android/dist/
